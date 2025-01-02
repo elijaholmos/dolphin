@@ -16,13 +16,16 @@
 // inside callback:
 //   ScheduleEvent(periodInCycles - cyclesLate, callback, "whatever")
 
+#include <compare>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
 #include "Common/CommonTypes.h"
 #include "Common/SPSCQueue.h"
+#include "Core/CPUThreadConfigCallback.h"
 
 class PointerWrap;
 
@@ -57,6 +60,16 @@ struct Event
   u64 fifo_order;
   u64 userdata;
   EventType* type;
+
+  // Sort by time, unless the times are the same, in which case sort by the order added to the queue
+  constexpr auto operator<=>(const Event& other) const
+  {
+    return std::tie(time, fifo_order) <=> std::tie(other.time, other.fifo_order);
+  }
+  constexpr bool operator==(const Event& other) const
+  {
+    return std::tie(time, fifo_order) == std::tie(other.time, other.fifo_order);
+  }
 };
 
 enum class FromThread
@@ -162,7 +175,7 @@ private:
   std::unordered_map<std::string, EventType> m_event_types;
 
   // STATE_TO_SAVE
-  // The queue is a min-heap using std::make_heap/push_heap/pop_heap.
+  // The queue is a min-heap using std::ranges::make_heap/push_heap/pop_heap.
   // We don't use std::priority_queue because we need to be able to serialize, unserialize and
   // erase arbitrary events (RemoveEvent()) regardless of the queue order. These aren't accomodated
   // by the standard adaptor class.
@@ -182,7 +195,7 @@ private:
 
   EventType* m_ev_lost = nullptr;
 
-  size_t m_registered_config_callback_id = 0;
+  CPUThreadConfigCallback::ConfigChangedCallbackID m_registered_config_callback_id;
   float m_config_oc_factor = 0.0f;
   float m_config_oc_inv_factor = 0.0f;
   bool m_config_sync_on_skip_idle = false;

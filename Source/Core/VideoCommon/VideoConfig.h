@@ -21,10 +21,13 @@ constexpr int EFB_SCALE_AUTO_INTEGRAL = 0;
 
 enum class AspectMode : int
 {
-  Auto,
-  AnalogWide,
-  Analog,
+  Auto,           // ~4:3 or ~16:9 (auto detected)
+  ForceWide,      // ~16:9
+  ForceStandard,  // ~4:3
   Stretch,
+  Custom,         // Forced relative custom AR
+  CustomStretch,  // Forced absolute custom AR
+  Raw,            // Forced squared pixels
 };
 
 enum class StereoMode : int
@@ -52,6 +55,17 @@ enum class TextureFilteringMode : int
   Linear,
 };
 
+enum class OutputResamplingMode : int
+{
+  Default,
+  Bilinear,
+  BSpline,
+  MitchellNetravali,
+  CatmullRom,
+  SharpBilinear,
+  AreaSampling,
+};
+
 enum class ColorCorrectionRegion : int
 {
   SMPTE_NTSCM,
@@ -64,6 +78,16 @@ enum class TriState : int
   Off,
   On,
   Auto
+};
+
+enum class FrameDumpResolutionType : int
+{
+  // Window resolution (not including potential back buffer black borders)
+  WindowResolution,
+  // The aspect ratio corrected XFB resolution (XFB pixels might not have been square)
+  XFBAspectRatioCorrectedResolution,
+  // The raw unscaled XFB resolution (based on "internal resolution" scale)
+  XFBRawResolution,
 };
 
 // Bitmask containing information about which configuration has changed for the backend.
@@ -94,7 +118,13 @@ struct VideoConfig final
   bool bVSyncActive = false;
   bool bWidescreenHack = false;
   AspectMode aspect_mode{};
+  int custom_aspect_width = 1;
+  int custom_aspect_height = 1;
   AspectMode suggested_aspect_mode{};
+  u32 widescreen_heuristic_transition_threshold = 0;
+  float widescreen_heuristic_aspect_ratio_slop = 0.f;
+  float widescreen_heuristic_standard_ratio = 0.f;
+  float widescreen_heuristic_widescreen_ratio = 0.f;
   bool bCrop = false;  // Aspect ratio controls.
   bool bShaderCache = false;
 
@@ -103,6 +133,7 @@ struct VideoConfig final
   bool bSSAA = false;
   int iEFBScale = 0;
   TextureFilteringMode texture_filtering_mode = TextureFilteringMode::Default;
+  OutputResamplingMode output_resampling_mode = OutputResamplingMode::Default;
   int iMaxAnisotropy = 0;
   std::string sPostProcessingShader;
   bool bForceTrueColor = false;
@@ -126,8 +157,9 @@ struct VideoConfig final
     float fSDRDisplayCustomGamma = 2.2f;
 
     // HDR:
-    // 200 is a good default value that matches the brightness of many SDR screens
-    float fHDRPaperWhiteNits = 200.f;
+    // 203 is a good default value that matches the brightness of many SDR screens.
+    // It's also the value recommended by the ITU.
+    float fHDRPaperWhiteNits = 203.f;
   } color_correction;
 
   // Information
@@ -167,7 +199,8 @@ struct VideoConfig final
   std::string sDumpEncoder;
   std::string sDumpFormat;
   std::string sDumpPath;
-  bool bInternalResolutionFrameDumps = false;
+  FrameDumpResolutionType frame_dumps_resolution_type =
+      FrameDumpResolutionType::XFBAspectRatioCorrectedResolution;
   bool bBorderlessFullscreen = false;
   bool bEnableGPUTextureDecoding = false;
   bool bPreferVSForLinePointExpansion = false;
@@ -208,6 +241,7 @@ struct VideoConfig final
 
   // Stereoscopy
   StereoMode stereo_mode{};
+  bool stereo_per_eye_resolution_full = false;
   int iStereoDepth = 0;
   int iStereoConvergence = 0;
   int iStereoConvergencePercentage = 0;
@@ -348,6 +382,8 @@ struct VideoConfig final
   bool UsingUberShaders() const;
   u32 GetShaderCompilerThreads() const;
   u32 GetShaderPrecompilerThreads() const;
+
+  float GetCustomAspectRatio() const { return (float)custom_aspect_width / custom_aspect_height; }
 };
 
 extern VideoConfig g_Config;

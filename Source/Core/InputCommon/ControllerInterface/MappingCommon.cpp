@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
 #include "Common/StringUtil.h"
 #include "InputCommon/ControllerInterface/CoreDevice.h"
@@ -43,7 +44,7 @@ std::string GetExpressionForControl(const std::string& control_name,
   {
     // If our expression contains any non-alpha characters
     // we should quote it
-    if (!std::all_of(expr.begin(), expr.end(), Common::IsAlpha))
+    if (!std::ranges::all_of(expr, Common::IsAlpha))
       expr = fmt::format("`{}`", expr);
   }
 
@@ -96,12 +97,12 @@ BuildExpression(const std::vector<ciface::Core::DeviceContainer::InputDetection>
 
     if (is_hotkey)
     {
-      alternations.push_back(fmt::format("@({})", JoinStrings(alternation, "+")));
+      alternations.push_back(fmt::format("@({})", fmt::join(alternation, "+")));
     }
     else
     {
-      std::sort(alternation.begin(), alternation.end());
-      alternations.push_back(JoinStrings(alternation, "&"));
+      std::ranges::sort(alternation);
+      alternations.push_back(fmt::to_string(fmt::join(alternation, "&")));
     }
   };
 
@@ -127,25 +128,25 @@ BuildExpression(const std::vector<ciface::Core::DeviceContainer::InputDetection>
   handle_release();
 
   // Remove duplicates
-  std::sort(alternations.begin(), alternations.end());
-  alternations.erase(std::unique(alternations.begin(), alternations.end()), alternations.end());
+  std::ranges::sort(alternations);
+  const auto unique_result = std::ranges::unique(alternations);
+  alternations.erase(unique_result.begin(), unique_result.end());
 
-  return JoinStrings(alternations, "|");
+  return fmt::to_string(fmt::join(alternations, "|"));
 }
 
 void RemoveSpuriousTriggerCombinations(
     std::vector<ciface::Core::DeviceContainer::InputDetection>* detections)
 {
-  const auto is_spurious = [&](auto& detection) {
-    return std::any_of(detections->begin(), detections->end(), [&](auto& d) {
+  const auto is_spurious = [&](const auto& detection) {
+    return std::ranges::any_of(*detections, [&](const auto& d) {
       // This is a spurious digital detection if a "smooth" (analog) detection is temporally near.
       return &d != &detection && d.smoothness > 1 && d.smoothness > detection.smoothness &&
              abs(d.press_time - detection.press_time) < SPURIOUS_TRIGGER_COMBO_THRESHOLD;
     });
   };
 
-  detections->erase(std::remove_if(detections->begin(), detections->end(), is_spurious),
-                    detections->end());
+  std::erase_if(*detections, is_spurious);
 }
 
 }  // namespace ciface::MappingCommon

@@ -43,9 +43,7 @@ const std::vector<Watch>& Watches::GetWatches() const
 
 void Watches::UnsetWatch(u32 address)
 {
-  m_watches.erase(std::remove_if(m_watches.begin(), m_watches.end(),
-                                 [address](const auto& watch) { return watch.address == address; }),
-                  m_watches.end());
+  std::erase_if(m_watches, [address](const auto& watch) { return watch.address == address; });
 }
 
 void Watches::UpdateWatch(std::size_t index, u32 address, std::string name)
@@ -81,7 +79,7 @@ void Watches::DisableWatch(std::size_t index)
 
 bool Watches::HasEnabledWatch(u32 address) const
 {
-  return std::any_of(m_watches.begin(), m_watches.end(), [address](const auto& watch) {
+  return std::ranges::any_of(m_watches, [address](const auto& watch) {
     return watch.address == address && watch.is_enabled == Watch::State::Enabled;
   });
 }

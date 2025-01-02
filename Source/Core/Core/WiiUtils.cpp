@@ -21,6 +21,7 @@
 #include "Common/Align.h"
 #include "Common/Assert.h"
 #include "Common/CommonTypes.h"
+#include "Common/Contains.h"
 #include "Common/EnumUtils.h"
 #include "Common/FileUtil.h"
 #include "Common/HttpRequest.h"
@@ -40,6 +41,7 @@
 #include "Core/IOS/USB/Bluetooth/BTReal.h"
 #include "Core/IOS/Uids.h"
 #include "Core/SysConf.h"
+#include "Core/System.h"
 #include "DiscIO/DiscExtractor.h"
 #include "DiscIO/Enums.h"
 #include "DiscIO/Filesystem.h"
@@ -222,15 +224,14 @@ bool IsTitleInstalled(u64 title_id)
   // Since this isn't IOS and we only need a simple way to figure out if a title is installed,
   // we make the (reasonable) assumption that having more than just the TMD in the content
   // directory means that the title is installed.
-  return std::any_of(entries->begin(), entries->end(),
-                     [](const std::string& file) { return file != "title.tmd"; });
+  return std::ranges::any_of(*entries, [](const std::string& file) { return file != "title.tmd"; });
 }
 
 bool IsTMDImported(IOS::HLE::FS::FileSystem& fs, u64 title_id)
 {
   const auto entries = fs.ReadDirectory(0, 0, Common::GetTitleContentPath(title_id));
-  return entries && std::any_of(entries->begin(), entries->end(),
-                                [](const std::string& file) { return file == "title.tmd"; });
+  return entries &&
+         std::ranges::any_of(*entries, [](const std::string& file) { return file == "title.tmd"; });
 }
 
 IOS::ES::TMDReader FindBackupTMD(IOS::HLE::FS::FileSystem& fs, u64 title_id)
@@ -531,7 +532,7 @@ UpdateResult OnlineSystemUpdater::InstallTitleFromNUS(const std::string& prefix_
   if (title.id == Titles::BOOT2)
     return UpdateResult::Succeeded;
 
-  if (!ShouldInstallTitle(title) || updated_titles->find(title.id) != updated_titles->end())
+  if (!ShouldInstallTitle(title) || updated_titles->contains(title.id))
     return UpdateResult::Succeeded;
 
   NOTICE_LOG_FMT(CORE, "Updating title {:016x}", title.id);
@@ -590,10 +591,8 @@ UpdateResult OnlineSystemUpdater::InstallTitleFromNUS(const std::string& prefix_
   const UpdateResult import_result = [&]() {
     for (const IOS::ES::Content& content : tmd.first.GetContents())
     {
-      const bool is_already_installed = std::find_if(stored_contents.begin(), stored_contents.end(),
-                                                     [&content](const auto& stored_content) {
-                                                       return stored_content.id == content.id;
-                                                     }) != stored_contents.end();
+      const bool is_already_installed =
+          Common::Contains(stored_contents, content.id, &IOS::ES::Content::id);
 
       // Do skip what is already installed on the NAND.
       if (is_already_installed)
@@ -946,8 +945,8 @@ static NANDCheckResult CheckNAND(IOS::HLE::Kernel& ios, bool repair)
     }
 
     const auto installed_contents = es.GetStoredContentsFromTMD(tmd);
-    const bool is_installed = std::any_of(installed_contents.begin(), installed_contents.end(),
-                                          [](const auto& content) { return !content.IsShared(); });
+    const bool is_installed = std::ranges::any_of(
+        installed_contents, [](const auto& content) { return !content.IsShared(); });
 
     if (is_installed && installed_contents != tmd.GetContents() &&
         (tmd.GetTitleFlags() & IOS::ES::TitleFlags::TITLE_TYPE_DATA) == 0)
@@ -960,6 +959,34 @@ static NANDCheckResult CheckNAND(IOS::HLE::Kernel& ios, bool repair)
         result.bad = true;
     }
   }
+
+  // Get some storage stats.
+  const auto fs = ios.GetFS();
+  const auto root_stats = fs->GetExtendedDirectoryStats("/");
+
+  // The Wii System Menu's save/channel management only considers a specific subset of the Wii NAND
+  // user-accessible and will only use those folders when calculating the amount of free blocks it
+  // displays. This can have weird side-effects where the other parts of the NAND contain more data
+  // than reserved and it will display free blocks even though there isn't any space left. To avoid
+  // confusion, report the 'user' and 'system' data separately to the user.
+  u64 used_clusters_user = 0;
+  u64 used_inodes_user = 0;
+  for (std::string user_path : {"/meta", "/ticket", "/title/00010000", "/title/00010001",
+                                "/title/00010003", "/title/00010004", "/title/00010005",
+                                "/title/00010006", "/title/00010007", "/shared2/title"})
+  {
+    const auto dir_stats = fs->GetExtendedDirectoryStats(user_path);
+    if (dir_stats)
+    {
+      used_clusters_user += dir_stats->used_clusters;
+      used_inodes_user += dir_stats->used_inodes;
+    }
+  }
+
+  result.used_clusters_user = used_clusters_user;
+  result.used_clusters_system = root_stats ? (root_stats->used_clusters - used_clusters_user) : 0;
+  result.used_inodes_user = used_inodes_user;
+  result.used_inodes_system = root_stats ? (root_stats->used_inodes - used_inodes_user) : 0;
 
   return result;
 }
@@ -976,7 +1003,7 @@ bool RepairNAND(IOS::HLE::Kernel& ios)
 
 static std::shared_ptr<IOS::HLE::Device> GetBluetoothDevice()
 {
-  auto* ios = IOS::HLE::GetIOS();
+  auto* ios = Core::System::GetInstance().GetIOS();
   return ios ? ios->GetDeviceByName("/dev/usb/oh1/57e/305") : nullptr;
 }
 

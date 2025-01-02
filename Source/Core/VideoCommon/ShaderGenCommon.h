@@ -7,6 +7,7 @@
 #include <functional>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -78,8 +79,6 @@ public:
   {
     return memcmp(GetUidData(), obj.GetUidData(), GetUidDataSize()) == 0;
   }
-
-  bool operator!=(const ShaderUid& obj) const { return !operator==(obj); }
 
   // determines the storage order inside STL containers
   bool operator<(const ShaderUid& obj) const
@@ -284,6 +283,7 @@ void WriteSwitch(ShaderCode& out, APIType ApiType, std::string_view variable,
 #define I_POSTTRANSFORMMATRICES "cpostmtx"
 #define I_PIXELCENTERCORRECTION "cpixelcenter"
 #define I_VIEWPORT_SIZE "cviewport"
+#define I_CACHED_NORMAL "cnormal"
 #define I_CACHED_TANGENT "ctangent"
 #define I_CACHED_BINORMAL "cbinormal"
 
@@ -307,6 +307,7 @@ static const char s_shader_uniforms[] = "\tuint    components;\n"
                                         "\tfloat4 " I_PIXELCENTERCORRECTION ";\n"
                                         "\tfloat2 " I_VIEWPORT_SIZE ";\n"
                                         "\tuint4   xfmem_pack1[8];\n"
+                                        "\tfloat4 " I_CACHED_NORMAL ";\n"
                                         "\tfloat4 " I_CACHED_TANGENT ";\n"
                                         "\tfloat4 " I_CACHED_BINORMAL ";\n"
                                         "\tuint vertex_stride;\n"
@@ -327,3 +328,22 @@ static const char s_geometry_shader_uniforms[] = "\tfloat4 " I_STEREOPARAMS ";\n
                                                  "\tfloat4 " I_LINEPTPARAMS ";\n"
                                                  "\tint4 " I_TEXOFFSET ";\n"
                                                  "\tuint vs_expand;\n";
+
+constexpr std::string_view CUSTOM_PIXELSHADER_COLOR_FUNC = "customShaderColor";
+
+struct CustomPixelShader
+{
+  std::string custom_shader;
+  std::string material_uniform_block;
+
+  bool operator==(const CustomPixelShader& other) const = default;
+};
+
+struct CustomPixelShaderContents
+{
+  std::vector<CustomPixelShader> shaders;
+
+  bool operator==(const CustomPixelShaderContents& other) const = default;
+};
+
+void WriteCustomShaderStructDef(ShaderCode* out, u32 numtexgens);

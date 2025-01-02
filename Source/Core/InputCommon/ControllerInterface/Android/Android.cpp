@@ -18,11 +18,13 @@
 #include <jni.h>
 
 #include "Common/Assert.h"
+#include "Common/Contains.h"
 #include "Common/Logging/Log.h"
 #include "Common/StringUtil.h"
 
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 
+#include "InputCommon/ControllerInterface/InputBackend.h"
 #include "jni/AndroidCommon/AndroidCommon.h"
 #include "jni/AndroidCommon/IDCache.h"
 #include "jni/Input/CoreDevice.h"
@@ -444,6 +446,23 @@ std::shared_ptr<ciface::Core::Device> FindDevice(jint device_id)
 
 namespace ciface::Android
 {
+class InputBackend final : public ciface::InputBackend
+{
+public:
+  InputBackend(ControllerInterface* controller_interface);
+  ~InputBackend();
+  void PopulateDevices() override;
+
+private:
+  void AddDevice(JNIEnv* env, int device_id);
+  void AddSensorDevice(JNIEnv* env);
+};
+
+std::unique_ptr<ciface::InputBackend> CreateInputBackend(ControllerInterface* controller_interface)
+{
+  return std::make_unique<InputBackend>(controller_interface);
+}
+
 class AndroidInput : public Core::Device::Input
 {
 public:
@@ -675,7 +694,7 @@ private:
         negative = new AndroidAxis(source, axis, true);
 
       if (positive && negative)
-        AddAnalogInputs(positive, negative);
+        AddFullAnalogSurfaceInputs(positive, negative);
       else if (positive || negative)
         AddInput(positive ? positive : negative);
     }
@@ -779,7 +798,8 @@ static jintArray CreateKeyCodesArray(JNIEnv* env)
   return keycodes_array;
 }
 
-void Init()
+InputBackend::InputBackend(ControllerInterface* controller_interface)
+    : ciface::InputBackend(controller_interface)
 {
   JNIEnv* env = IDCache::GetEnvForThread();
 
@@ -885,7 +905,7 @@ void Init()
                             s_controller_interface_register_input_device_listener);
 }
 
-void Shutdown()
+InputBackend::~InputBackend()
 {
   JNIEnv* env = IDCache::GetEnvForThread();
 
@@ -903,10 +923,16 @@ void Shutdown()
   env->DeleteGlobalRef(s_keycodes_array);
 }
 
-static void AddDevice(JNIEnv* env, int device_id)
+void InputBackend::AddDevice(JNIEnv* env, int device_id)
 {
   jobject input_device =
       env->CallStaticObjectMethod(s_input_device_class, s_input_device_get_device, device_id);
+
+  if (!input_device)
+  {
+    ERROR_LOG_FMT(CONTROLLERINTERFACE, "Could not find device with ID {}", device_id);
+    return;
+  }
 
   auto device = std::make_shared<AndroidDevice>(env, input_device);
 
@@ -915,7 +941,7 @@ static void AddDevice(JNIEnv* env, int device_id)
   if (device->Inputs().empty() && device->Outputs().empty())
     return;
 
-  g_controller_interface.AddDevice(device);
+  GetControllerInterface().AddDevice(device);
 
   Core::DeviceQualifier qualifier;
   qualifier.FromDevice(device.get());
@@ -930,7 +956,7 @@ static void AddDevice(JNIEnv* env, int device_id)
   env->DeleteLocalRef(j_qualifier);
 }
 
-static void AddSensorDevice(JNIEnv* env)
+void InputBackend::AddSensorDevice(JNIEnv* env)
 {
   // Device sensors (accelerometer, etc.) aren't associated with any Android InputDevice.
   // Create an otherwise empty Dolphin input device so that they have somewhere to live.
@@ -940,7 +966,7 @@ static void AddSensorDevice(JNIEnv* env)
   if (device->Inputs().empty() && device->Outputs().empty())
     return;
 
-  g_controller_interface.AddDevice(device);
+  GetControllerInterface().AddDevice(device);
 
   Core::DeviceQualifier qualifier;
   qualifier.FromDevice(device.get());
@@ -953,7 +979,7 @@ static void AddSensorDevice(JNIEnv* env)
   env->DeleteLocalRef(j_qualifier);
 }
 
-void PopulateDevices()
+void InputBackend::PopulateDevices()
 {
   INFO_LOG_FMT(CONTROLLERINTERFACE, "Android populating devices");
 
@@ -1107,8 +1133,7 @@ Java_org_dolphinemu_dolphinemu_features_input_model_ControllerInterface_notifySe
 
   for (ciface::Core::Device::Input* input : device->Inputs())
   {
-    const std::string input_name = input->GetName();
-    if (std::find(axis_names.begin(), axis_names.end(), input_name) != axis_names.end())
+    if (Common::Contains(axis_names, input->GetName()))
     {
       auto casted_input = static_cast<ciface::Android::AndroidSensorAxis*>(input);
       casted_input->NotifyIsSuspended(static_cast<bool>(suspended));

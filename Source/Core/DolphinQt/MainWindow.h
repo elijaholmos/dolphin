@@ -13,10 +13,12 @@
 
 #include "Core/Boot/Boot.h"
 
+class QMenu;
 class QStackedWidget;
 class QString;
 
 class AchievementsWindow;
+class AssemblerWidget;
 class BreakpointWidget;
 struct BootParameters;
 class CheatsManager;
@@ -52,6 +54,11 @@ class WatchWidget;
 class WiiTASInputWindow;
 struct WindowSystemInfo;
 
+namespace Core
+{
+class System;
+}
+
 namespace DiscIO
 {
 enum class Region;
@@ -72,14 +79,14 @@ class MainWindow final : public QMainWindow
   Q_OBJECT
 
 public:
-  explicit MainWindow(std::unique_ptr<BootParameters> boot_parameters,
+  explicit MainWindow(Core::System& system, std::unique_ptr<BootParameters> boot_parameters,
                       const std::string& movie_path);
   ~MainWindow();
 
-  void Show();
   WindowSystemInfo GetWindowSystemInfo() const;
 
   bool eventFilter(QObject* object, QEvent* event) override;
+  QMenu* createPopupMenu() override;
 
 signals:
   void ReadOnlyModeChanged(bool read_only);
@@ -173,6 +180,7 @@ private:
 
 #ifdef USE_RETRO_ACHIEVEMENTS
   void ShowAchievementsWindow();
+  void ShowAchievementSettings();
 #endif  // USE_RETRO_ACHIEVEMENTS
 
   void NetPlayInit();
@@ -209,6 +217,8 @@ private:
   void dragEnterEvent(QDragEnterEvent* event) override;
   void dropEvent(QDropEvent* event) override;
   QSize sizeHint() const override;
+
+  Core::System& m_system;
 
 #ifdef HAVE_XRANDR
   std::unique_ptr<X11Utils::XRRConfiguration> m_xrr_config;
@@ -252,6 +262,7 @@ private:
   AchievementsWindow* m_achievements_window = nullptr;
 #endif  // USE_RETRO_ACHIEVEMENTS
 
+  AssemblerWidget* m_assembler_widget;
   BreakpointWidget* m_breakpoint_widget;
   CodeWidget* m_code_widget;
   JITWidget* m_jit_widget;

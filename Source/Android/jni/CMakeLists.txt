@@ -1,15 +1,18 @@
 add_library(main SHARED
+  ActivityTracker.cpp
   Cheats/ARCheat.cpp
   Cheats/Cheats.h
   Cheats/GeckoCheat.cpp
   Cheats/GraphicsMod.cpp
   Cheats/GraphicsModGroup.cpp
   Cheats/PatchCheat.cpp
+  Config/ConfigChangedCallback.cpp
   Config/NativeConfig.cpp
   Config/PostProcessing.cpp
   GameList/GameFile.cpp
   GameList/GameFile.h
   GameList/GameFileCache.cpp
+  GpuDriver.cpp
   Host.cpp
   Host.h
   InfinityConfig.cpp
@@ -27,12 +30,10 @@ add_library(main SHARED
   Input/MappingCommon.cpp
   Input/NumericSetting.cpp
   Input/NumericSetting.h
-  IniFile.cpp
   MainAndroid.cpp
   RiivolutionPatches.cpp
   SkylanderConfig.cpp
   WiiUtils.cpp
-  GpuDriver.cpp
 )
 
 target_link_libraries(main

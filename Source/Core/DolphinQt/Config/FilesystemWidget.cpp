@@ -25,6 +25,7 @@
 #include "DolphinQt/QtUtils/DolphinFileDialog.h"
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
 #include "DolphinQt/QtUtils/ParallelProgressDialog.h"
+#include "DolphinQt/QtUtils/SetWindowDecorations.h"
 #include "DolphinQt/Resources.h"
 
 #include "UICommon/UICommon.h"
@@ -212,8 +213,7 @@ void FilesystemWidget::PopulateDirectory(int partition_id, QStandardItem* root,
 
 QString FilesystemWidget::SelectFolder()
 {
-  return DolphinFileDialog::getExistingDirectory(this,
-                                                 QObject::tr("Choose the folder to extract to"));
+  return DolphinFileDialog::getExistingDirectory(this, QObject::tr("Choose Folder to Extract To"));
 }
 
 void FilesystemWidget::ShowContextMenu(const QPoint&)
@@ -225,6 +225,7 @@ void FilesystemWidget::ShowContextMenu(const QPoint&)
   auto* item = m_tree_model->itemFromIndex(selection->selectedIndexes()[0]);
 
   QMenu* menu = new QMenu(this);
+  menu->setAttribute(Qt::WA_DeleteOnClose, true);
 
   EntryType type = item->data(ENTRY_TYPE).value<EntryType>();
 
@@ -265,7 +266,7 @@ void FilesystemWidget::ShowContextMenu(const QPoint&)
   switch (type)
   {
   case EntryType::Disc:
-    menu->addAction(tr("Extract Entire Disc..."), this, [this, path] {
+    menu->addAction(tr("Extract Entire Disc..."), this, [this] {
       auto folder = SelectFolder();
 
       if (folder.isEmpty())
@@ -298,7 +299,7 @@ void FilesystemWidget::ShowContextMenu(const QPoint&)
   case EntryType::File:
     menu->addAction(tr("Extract File..."), this, [this, partition, path] {
       auto dest =
-          DolphinFileDialog::getSaveFileName(this, tr("Save File to"), QFileInfo(path).fileName());
+          DolphinFileDialog::getSaveFileName(this, tr("Save File To"), QFileInfo(path).fileName());
 
       if (!dest.isEmpty())
         ExtractFile(partition, path, dest);
@@ -364,6 +365,7 @@ void FilesystemWidget::ExtractDirectory(const DiscIO::Partition& partition, cons
     dialog.Reset();
   });
 
+  SetQWidgetWindowDecorations(dialog.GetRaw());
   dialog.GetRaw()->exec();
   future.get();
 }

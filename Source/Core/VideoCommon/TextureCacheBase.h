@@ -27,11 +27,13 @@
 #include "VideoCommon/TextureConfig.h"
 #include "VideoCommon/TextureDecoder.h"
 #include "VideoCommon/TextureInfo.h"
+#include "VideoCommon/TextureUtils.h"
 #include "VideoCommon/VideoEvents.h"
 
 class AbstractFramebuffer;
 class AbstractStagingTexture;
 class PointerWrap;
+struct SamplerState;
 struct VideoConfig;
 
 namespace VideoCommon
@@ -61,7 +63,6 @@ struct TextureAndTLUTFormat
     return texfmt == other.texfmt;
   }
 
-  bool operator!=(const TextureAndTLUTFormat& other) const { return !operator==(other); }
   TextureFormat texfmt;
   TLUTFormat tlutfmt;
 };
@@ -98,7 +99,6 @@ struct EFBCopyParams
 template <>
 struct fmt::formatter<EFBCopyParams>
 {
-  std::shared_ptr<int> state;
   constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
   template <typename FormatContext>
   auto format(const EFBCopyParams& uid, FormatContext& ctx) const
@@ -138,7 +138,7 @@ struct TCacheEntry
   u64 id = 0;
   u32 content_semaphore = 0;  // Counts up
 
-  // Indicates that this TCacheEntry has been invalided from textures_by_address
+  // Indicates that this TCacheEntry has been invalided from m_textures_by_address
   bool invalidated = false;
 
   bool reference_changed = false;  // used by xfb to determine when a reference xfb changed
@@ -151,7 +151,7 @@ struct TCacheEntry
   // used to delete textures which haven't been used for TEXTURE_KILL_THRESHOLD frames
   int frameCount = FRAMECOUNT_INVALID;
 
-  // Keep an iterator to the entry in textures_by_hash, so it does not need to be searched when
+  // Keep an iterator to the entry in m_textures_by_hash, so it does not need to be searched when
   // removing the cache entry
   std::multimap<u64, std::shared_ptr<TCacheEntry>>::iterator textures_by_hash_iter;
 
@@ -282,7 +282,7 @@ public:
   RcTcacheEntry GetXFBTexture(u32 address, u32 width, u32 height, u32 stride,
                               MathUtil::Rectangle<int>* display_rect);
 
-  virtual void BindTextures(BitSet32 used_textures);
+  virtual void BindTextures(BitSet32 used_textures, const std::array<SamplerState, 8>& samplers);
   void CopyRenderTargetToTexture(u32 dstAddr, EFBCopyFormat dstFormat, u32 width, u32 height,
                                  u32 dstStride, bool is_depth_copy,
                                  const MathUtil::Rectangle<int>& srcRect, bool isIntensity,
@@ -308,6 +308,10 @@ public:
   static bool AllCopyFilterCoefsNeeded(const std::array<u32, 3>& coefficients);
   static bool CopyFilterCanOverflow(const std::array<u32, 3>& coefficients);
 
+  // Get a new sampler state
+  static SamplerState GetSamplerState(u32 index, float custom_tex_scale, bool custom_tex,
+                                      bool has_arbitrary_mips);
+
 protected:
   // Decodes the specified data to the GPU texture specified by entry.
   // Returns false if the configuration is not supported.
@@ -330,8 +334,8 @@ protected:
                                    float gamma, bool clamp_top, bool clamp_bottom,
                                    const std::array<u32, 3>& filter_coefficients);
 
-  alignas(16) u8* temp = nullptr;
-  size_t temp_size = 0;
+  alignas(16) u8* m_temp = nullptr;
+  size_t m_temp_size = 0;
 
 private:
   using TexAddrCache = std::multimap<u32, RcTcacheEntry>;
@@ -350,7 +354,7 @@ private:
   RcTcacheEntry
   CreateTextureEntry(const TextureCreationInfo& creation_info, const TextureInfo& texture_info,
                      int safety_color_sample_size,
-                     std::vector<std::shared_ptr<VideoCommon::CustomTextureData>> assets_data,
+                     std::vector<std::shared_ptr<VideoCommon::TextureData>> assets_data,
                      bool custom_arbitrary_mipmaps, bool skip_texture_dump);
 
   RcTcacheEntry GetXFBFromCache(u32 address, u32 width, u32 height, u32 stride);
@@ -363,8 +367,6 @@ private:
                                         TLUTFormat tlutfmt);
   void StitchXFBCopy(RcTcacheEntry& entry_to_update);
 
-  void DumpTexture(RcTcacheEntry& entry, std::string basename, unsigned int level,
-                   bool is_arbitrary);
   void CheckTempSize(size_t required_size);
 
   RcTcacheEntry AllocateCacheEntry(const TextureConfig& config);
@@ -405,20 +407,20 @@ private:
   void DoSaveState(PointerWrap& p);
   void DoLoadState(PointerWrap& p);
 
-  // textures_by_address is the authoritive version of what's actually "in" the texture cache
+  // m_textures_by_address is the authoritive version of what's actually "in" the texture cache
   // but it's possible for invalidated TCache entries to live on elsewhere
-  TexAddrCache textures_by_address;
+  TexAddrCache m_textures_by_address;
 
-  // textures_by_hash is an alternative view of the texture cache
-  // All textures in here will also be in textures_by_address
-  TexHashCache textures_by_hash;
+  // m_textures_by_hash is an alternative view of the texture cache
+  // All textures in here will also be in m_textures_by_address
+  TexHashCache m_textures_by_hash;
 
-  // bound_textures are actually active in the current draw
+  // m_bound_textures are actually active in the current draw
   // It's valid for textures to be in here after they've been invalidated
-  std::array<RcTcacheEntry, 8> bound_textures{};
+  std::array<RcTcacheEntry, 8> m_bound_textures{};
 
-  TexPool texture_pool;
-  u64 last_entry_id = 0;
+  TexPool m_texture_pool;
+  u64 m_last_entry_id = 0;
 
   // Backup configuration values
   struct BackupConfig
@@ -437,7 +439,7 @@ private:
     bool graphics_mods;
     u32 graphics_mod_change_count;
   };
-  BackupConfig backup_config = {};
+  BackupConfig m_backup_config = {};
 
   // Encoding texture used for EFB copies to RAM.
   std::unique_ptr<AbstractTexture> m_efb_encoding_texture;
@@ -462,7 +464,9 @@ private:
   void OnFrameEnd();
 
   Common::EventHook m_frame_event =
-      AfterFrameEvent::Register([this] { OnFrameEnd(); }, "TextureCache");
+      AfterFrameEvent::Register([this](Core::System&) { OnFrameEnd(); }, "TextureCache");
+
+  VideoCommon::TextureUtils::TextureDumper m_texture_dumper;
 };
 
 extern std::unique_ptr<TextureCacheBase> g_texture_cache;

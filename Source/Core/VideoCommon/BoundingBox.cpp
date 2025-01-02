@@ -34,7 +34,7 @@ void BoundingBox::Flush()
 
   m_is_valid = false;
 
-  if (std::none_of(m_dirty.begin(), m_dirty.end(), [](bool dirty) { return dirty; }))
+  if (std::ranges::none_of(m_dirty, std::identity{}))
     return;
 
   // TODO: Does this make any difference over just writing all the values?
@@ -51,7 +51,7 @@ void BoundingBox::Flush()
     for (u32 i = start; i < end; ++i)
       m_dirty[i] = false;
 
-    Write(start, std::vector<BBoxType>(m_values.begin() + start, m_values.begin() + end));
+    Write(start, std::span(m_values.begin() + start, m_values.begin() + end));
   }
 }
 

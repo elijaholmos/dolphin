@@ -553,7 +553,7 @@ bool SyncSDFolderToSDImage(const std::function<bool()>& cancelled, bool determin
   }
 
   MKFS_PARM options = {};
-  options.fmt = FM_FAT32;
+  options.fmt = FM_FAT32 | FM_SFD;
   options.n_fat = 0;    // Number of FATs: automatic
   options.align = 1;    // Alignment of the data region (in sectors)
   options.n_root = 0;   // Number of root directory entries: automatic (and unused for FAT32)
@@ -729,7 +729,7 @@ static bool Unpack(const std::function<bool()>& cancelled, const std::string pat
     const bool is_path_traversal_attack =
         (childname.find("\\") != std::string_view::npos) ||
         (childname.find('/') != std::string_view::npos) ||
-        std::all_of(childname.begin(), childname.end(), [](char c) { return c == '.'; });
+        std::ranges::all_of(childname, [](char c) { return c == '.'; });
     if (is_path_traversal_attack)
     {
       ERROR_LOG_FMT(

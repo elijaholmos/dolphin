@@ -27,12 +27,13 @@
 #include "Core/IOS/IOS.h"
 #include "Core/IOS/USB/Bluetooth/BTBase.h"
 #include "Core/SysConf.h"
+#include "Core/System.h"
 
 namespace ConfigLoaders
 {
 void SaveToSYSCONF(Config::LayerType layer, std::function<bool(const Config::Location&)> predicate)
 {
-  if (Core::IsRunning())
+  if (Core::IsRunning(Core::System::GetInstance()))
     return;
 
   IOS::HLE::Kernel ios;
@@ -69,17 +70,6 @@ void SaveToSYSCONF(Config::LayerType layer, std::function<bool(const Config::Loc
   }
 
   sysconf.SetData<u32>("IPL.CB", SysConf::Entry::Type::Long, 0);
-
-  // Disable WiiConnect24's standby mode. If it is enabled, it prevents us from receiving
-  // shutdown commands in the State Transition Manager (STM).
-  // TODO: remove this if and once Dolphin supports WC24 standby mode.
-  SysConf::Entry* idle_entry = sysconf.GetOrAddEntry("IPL.IDL", SysConf::Entry::Type::SmallArray);
-  if (idle_entry->bytes.empty())
-    idle_entry->bytes = std::vector<u8>(2);
-  else
-    idle_entry->bytes[0] = 0;
-  NOTICE_LOG_FMT(CORE, "Disabling WC24 'standby' (shutdown to idle) to avoid hanging on shutdown");
-
   IOS::HLE::RestoreBTInfoSection(&sysconf);
   sysconf.Save();
 }
@@ -91,7 +81,6 @@ const std::map<Config::System, int> system_to_ini = {
     {Config::System::GCKeyboard, F_GCKEYBOARDCONFIG_IDX},
     {Config::System::GFX, F_GFXCONFIG_IDX},
     {Config::System::Logger, F_LOGGERCONFIG_IDX},
-    {Config::System::Debugger, F_DEBUGGERCONFIG_IDX},
     {Config::System::DualShockUDPClient, F_DUALSHOCKUDPCLIENTCONFIG_IDX},
     {Config::System::FreeLook, F_FREELOOKCONFIG_IDX},
     {Config::System::Achievements, F_RETROACHIEVEMENTSCONFIG_IDX},
@@ -125,9 +114,8 @@ public:
         for (const auto& value : section_map)
         {
           const Config::Location location{system.first, section_name, value.first};
-          const bool load_disallowed =
-              std::any_of(begin(s_setting_disallowed), end(s_setting_disallowed),
-                          [&location](const Config::Location* l) { return *l == location; });
+          const bool load_disallowed = std::ranges::any_of(
+              s_setting_disallowed, [&location](const auto* l) { return *l == location; });
           if (load_disallowed)
             continue;
 
@@ -194,7 +182,7 @@ public:
 private:
   void LoadFromSYSCONF(Config::Layer* layer)
   {
-    if (Core::IsRunning())
+    if (Core::IsRunning(Core::System::GetInstance()))
       return;
 
     IOS::HLE::Kernel ios;

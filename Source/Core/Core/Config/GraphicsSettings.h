@@ -10,9 +10,12 @@
 enum class AspectMode : int;
 enum class ShaderCompilationMode : int;
 enum class StereoMode : int;
+enum class StereoPerEyeResolution : int;
 enum class TextureFilteringMode : int;
+enum class OutputResamplingMode : int;
 enum class ColorCorrectionRegion : int;
 enum class TriState : int;
+enum class FrameDumpResolutionType : int;
 
 namespace Config
 {
@@ -27,7 +30,13 @@ extern const Info<int> GFX_ADAPTER;
 
 extern const Info<bool> GFX_WIDESCREEN_HACK;
 extern const Info<AspectMode> GFX_ASPECT_RATIO;
+extern const Info<int> GFX_CUSTOM_ASPECT_RATIO_WIDTH;
+extern const Info<int> GFX_CUSTOM_ASPECT_RATIO_HEIGHT;
 extern const Info<AspectMode> GFX_SUGGESTED_ASPECT_RATIO;
+extern const Info<u32> GFX_WIDESCREEN_HEURISTIC_TRANSITION_THRESHOLD;
+extern const Info<float> GFX_WIDESCREEN_HEURISTIC_ASPECT_RATIO_SLOP;
+extern const Info<float> GFX_WIDESCREEN_HEURISTIC_STANDARD_RATIO;
+extern const Info<float> GFX_WIDESCREEN_HEURISTIC_WIDESCREEN_RATIO;
 extern const Info<bool> GFX_CROP;
 extern const Info<int> GFX_SAFE_TEXTURE_CACHE_COLOR_SAMPLES;
 extern const Info<bool> GFX_SHOW_FPS;
@@ -60,7 +69,7 @@ extern const Info<std::string> GFX_DUMP_PIXEL_FORMAT;
 extern const Info<std::string> GFX_DUMP_ENCODER;
 extern const Info<std::string> GFX_DUMP_PATH;
 extern const Info<int> GFX_BITRATE_KBPS;
-extern const Info<bool> GFX_INTERNAL_RESOLUTION_FRAME_DUMPS;
+extern const Info<FrameDumpResolutionType> GFX_FRAME_DUMPS_RESOLUTION_TYPE;
 extern const Info<int> GFX_PNG_COMPRESSION_LEVEL;
 extern const Info<bool> GFX_ENABLE_GPU_TEXTURE_DECODING;
 extern const Info<bool> GFX_ENABLE_PIXEL_LIGHTING;
@@ -101,6 +110,7 @@ extern const Info<bool> GFX_MODS_ENABLE;
 
 extern const Info<TextureFilteringMode> GFX_ENHANCE_FORCE_TEXTURE_FILTERING;
 extern const Info<int> GFX_ENHANCE_MAX_ANISOTROPY;  // NOTE - this is x in (1 << x)
+extern const Info<OutputResamplingMode> GFX_ENHANCE_OUTPUT_RESAMPLING;
 extern const Info<std::string> GFX_ENHANCE_POST_SHADER;
 extern const Info<bool> GFX_ENHANCE_FORCE_TRUE_COLOR;
 extern const Info<bool> GFX_ENHANCE_DISABLE_COPY_FILTER;
@@ -117,7 +127,7 @@ static constexpr float GFX_CC_DISPLAY_GAMMA_MIN = 2.2f;
 static constexpr float GFX_CC_DISPLAY_GAMMA_MAX = 2.4f;
 
 static constexpr float GFX_CC_HDR_PAPER_WHITE_NITS_MIN = 80.f;
-static constexpr float GFX_CC_HDR_PAPER_WHITE_NITS_MAX = 400.f;
+static constexpr float GFX_CC_HDR_PAPER_WHITE_NITS_MAX = 500.f;
 
 extern const Info<bool> GFX_CC_CORRECT_COLOR_SPACE;
 extern const Info<ColorCorrectionRegion> GFX_CC_GAME_COLOR_SPACE;
@@ -130,6 +140,7 @@ extern const Info<float> GFX_CC_HDR_PAPER_WHITE_NITS;
 // Graphics.Stereoscopy
 
 extern const Info<StereoMode> GFX_STEREO_MODE;
+extern const Info<bool> GFX_STEREO_PER_EYE_RESOLUTION_FULL;
 extern const Info<int> GFX_STEREO_DEPTH;
 extern const Info<int> GFX_STEREO_CONVERGENCE_PERCENTAGE;
 extern const Info<bool> GFX_STEREO_SWAP_EYES;

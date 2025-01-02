@@ -17,6 +17,7 @@
 #include "VideoCommon/AbstractPipeline.h"
 #include "VideoCommon/NativeVertexFormat.h"
 #include "VideoCommon/VertexShaderGen.h"
+#include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
 
 MRCOwned<id<MTLDevice>> Metal::g_device;
@@ -313,6 +314,8 @@ public:
       framebuffer.color_texture_format = cfg.framebuffer_state.color_texture_format.Value();
       framebuffer.depth_texture_format = cfg.framebuffer_state.depth_texture_format.Value();
       framebuffer.samples = cfg.framebuffer_state.samples.Value();
+      framebuffer.additional_color_attachment_count =
+          cfg.framebuffer_state.additional_color_attachment_count.Value();
       blend.colorupdate = cfg.blending_state.colorupdate.Value();
       blend.alphaupdate = cfg.blending_state.alphaupdate.Value();
       if (cfg.blending_state.blendenable)
@@ -426,6 +429,11 @@ public:
       }
       [desc setRasterSampleCount:fs.samples];
       [color0 setPixelFormat:Util::FromAbstract(fs.color_texture_format)];
+      if (u32 cnt = fs.additional_color_attachment_count)
+      {
+        for (u32 i = 0; i < cnt; i++)
+          [[desc colorAttachments] setObject:color0 atIndexedSubscript:i + 1];
+      }
       [desc setDepthAttachmentPixelFormat:Util::FromAbstract(fs.depth_texture_format)];
       if (Util::HasStencil(fs.depth_texture_format))
         [desc setStencilAttachmentPixelFormat:Util::FromAbstract(fs.depth_texture_format)];
@@ -438,10 +446,66 @@ public:
                                                    error:&err];
       if (err)
       {
-        PanicAlertFmt("Failed to compile pipeline for {} and {}: {}",
+        static int counter;
+        std::string filename = VideoBackendBase::BadShaderFilename("pipeline", counter++);
+        FILE* file = fopen(filename.c_str(), "w");
+        if (file)
+        {
+          fmt::println(file, "=============== Error ===============");
+          fmt::println(file, "{}", [[err localizedDescription] UTF8String]);
+          fmt::println(file, "============== Pipeline =============");
+          fmt::println(file, "VS: {}", [[[desc vertexFunction] label] UTF8String]);
+          fmt::println(file, "PS: {}", [[[desc fragmentFunction] label] UTF8String]);
+          fmt::println(file, "Color Format: {}", static_cast<u32>(fs.color_texture_format.Value()));
+          fmt::println(file, "Depth Format: {}", static_cast<u32>(fs.depth_texture_format.Value()));
+          fmt::println(file, "Sample Count: {}", fs.samples);
+          if (u32 cnt = fs.additional_color_attachment_count)
+            fmt::println(file, "Additional Color Attachments: {}", cnt);
+          if (bs.colorupdate && bs.alphaupdate)
+            fmt::println(file, "Write Color, Alpha");
+          else if (bs.colorupdate)
+            fmt::println(file, "Write Color");
+          else if (bs.alphaupdate)
+            fmt::println(file, "Write Alpha");
+          else
+            fmt::println(file, "Write None");
+          if (bs.blendenable)
+          {
+            auto print_blend = [file](const char* name, SrcBlendFactor src, DstBlendFactor dst,
+                                      bool subtract) {
+              if (subtract)
+                fmt::println(file, "{}: dst * {} - src * {}", name, dst, src);
+              else
+                fmt::println(file, "{}: src * {} + dst * {}", name, src, dst);
+            };
+            print_blend("Color Blend", bs.srcfactor, bs.dstfactor, bs.subtract);
+            print_blend("Alpha Blend", bs.srcfactoralpha, bs.dstfactoralpha, bs.subtractAlpha);
+            fmt::println(file, "Blend Dual Source: {}", bs.usedualsrc ? "true" : "false");
+          }
+          else
+          {
+            fmt::println(file, "Blend Disabled");
+          }
+          if (const Shader* vs = static_cast<const Shader*>(config.vertex_shader))
+          {
+            fmt::println(file, "========= Vertex Shader MSL =========");
+            fmt::println(file, "{}", vs->GetMSL());
+          }
+          if (const Shader* ps = static_cast<const Shader*>(config.pixel_shader))
+          {
+            fmt::println(file, "========== Pixel Shader MSL =========");
+            fmt::println(file, "{}", ps->GetMSL());
+          }
+          fclose(file);
+        }
+
+        std::string file_msg = file ? fmt::format("Details were written to {}", filename) :
+                                      "Failed to write detailed info";
+
+        PanicAlertFmt("Failed to compile pipeline for {} and {}: {}\n{}",
                       [[[desc vertexFunction] label] UTF8String],
                       [[[desc fragmentFunction] label] UTF8String],
-                      [[err localizedDescription] UTF8String]);
+                      [[err localizedDescription] UTF8String], file_msg);
         return std::make_pair(nullptr, PipelineReflection());
       }
 
